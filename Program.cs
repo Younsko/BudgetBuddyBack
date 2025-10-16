@@ -30,7 +30,7 @@ builder.Services.AddDbContext<AppDbContext>(opt =>
 );
 
 // Authentication
-var jwtSecret = builder.Configuration["JWT_SECRET"] ?? "super-secret-key-change-this-in-production-super-secret-key-change";
+var jwtSecret = builder.Configuration["JWT_SECRET"] ?? "2e351eb95b5162f503b22d4947c380224c8816c82492ae95424540b76086ad84";
 var jwtIssuer = builder.Configuration["JWT_ISSUER"] ?? "BudgetBuddy";
 var jwtAudience = builder.Configuration["JWT_AUDIENCE"] ?? "BudgetBuddy";
 
@@ -63,6 +63,7 @@ builder.Services.AddCors(opt => opt.AddPolicy("AllowAll",
 builder.Services.AddScoped<AuthService>();
 builder.Services.AddScoped<ExchangeRateService>();
 builder.Services.AddScoped<OcrService>();
+builder.Services.AddScoped<CategoryService>();
 builder.Services.AddHttpClient();
 
 // Controllers & Swagger
