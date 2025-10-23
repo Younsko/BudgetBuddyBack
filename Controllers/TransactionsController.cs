@@ -123,36 +123,34 @@ public class TransactionsController : ControllerBase
         });
     }
 
-    [HttpPost]
-    [ProducesResponseType(typeof(TransactionDto), 201)]
-    [ProducesResponseType(400)]
-    public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCreateDto dto)
+[HttpPost]
+[ProducesResponseType(typeof(TransactionDto), 201)]
+[ProducesResponseType(400)]
+public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCreateDto dto)
+{
+    if (!ModelState.IsValid)
+        return BadRequest(ModelState);
+
+    var userId = GetUserId();
+
+    try
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var userId = GetUserId();
-
-        try
+        if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
         {
-            // ✅ Vérifier ownership de la catégorie
-            if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
-            {
-                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
-                    return BadRequest(new { error = "Category not found or access denied" });
-            }
+            if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
+                return BadRequest(new { error = "Category not found or access denied" });
+        }
 
-            var transaction = new Transaction
-            {
-                UserId = userId,
-                CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null,
-                Amount = dto.Amount,
-                Currency = dto.Currency.ToUpper(),
-                Description = dto.Description,
-                // ✅ Utiliser la date fournie ou date actuelle
-                TransactionDate = dto.Date ?? DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            };
+        var transaction = new Transaction
+        {
+            UserId = userId,
+            CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null,
+            Amount = dto.Amount,
+            Currency = dto.Currency.ToUpper(),
+            Description = dto.Description,
+            TransactionDate = dto.Date.HasValue ? dto.Date.Value : DateTime.UtcNow,
+            CreatedAt = DateTime.UtcNow
+        };
 
             if (!string.IsNullOrEmpty(dto.ReceiptImage))
             {
@@ -204,63 +202,66 @@ public class TransactionsController : ControllerBase
         }
     }
 
-    [HttpPut("{id}")]
-    [ProducesResponseType(typeof(TransactionDto), 200)]
-    [ProducesResponseType(403)]
-    [ProducesResponseType(404)]
-    public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, TransactionCreateDto dto)
+[HttpPut("{id}")]
+[ProducesResponseType(typeof(TransactionDto), 200)]
+[ProducesResponseType(403)]
+[ProducesResponseType(404)]
+public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, TransactionCreateDto dto)
+{
+    if (!ModelState.IsValid)
+        return BadRequest(ModelState);
+
+    var userId = GetUserId();
+
+    var transaction = await _db.Transactions
+        .Include(t => t.Category)
+        .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+
+    if (transaction == null)
+        return NotFound(new { error = "Transaction not found or access denied" });
+
+    try
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var userId = GetUserId();
-
-        var transaction = await _db.Transactions
-            .Include(t => t.Category)
-            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
-
-        if (transaction == null)
-            return NotFound(new { error = "Transaction not found or access denied" });
-
-        try
+        if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
         {
-            if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
-            {
-                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
-                    return BadRequest(new { error = "Category not found or access denied" });
-            }
-
-            transaction.CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null;
-            transaction.Amount = dto.Amount;
-            transaction.Currency = dto.Currency.ToUpper();
-            transaction.Description = dto.Description;
-            if (dto.Date.HasValue)
-                transaction.TransactionDate = dto.Date.Value;
-
-            await _db.SaveChangesAsync();
-
-            _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId}");
-
-            return Ok(new TransactionDto
-            {
-                Id = transaction.Id,
-                CategoryId = transaction.CategoryId,
-                CategoryName = transaction.Category?.Name,
-                CategoryColor = transaction.Category?.Color,
-                Amount = transaction.Amount,
-                Currency = transaction.Currency,
-                Description = transaction.Description,
-                ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
-                CreatedAt = transaction.CreatedAt
-            });
+            if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
+                return BadRequest(new { error = "Category not found or access denied" });
         }
-        catch (Exception ex)
+
+        transaction.CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null;
+        transaction.Amount = dto.Amount;
+        transaction.Currency = dto.Currency.ToUpper();
+        transaction.Description = dto.Description;
+        
+        if (dto.Date.HasValue)
         {
-            _logger.LogError($"Update transaction error: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while updating transaction" });
+            transaction.TransactionDate = dto.Date.Value;
         }
+
+        await _db.SaveChangesAsync();
+
+        _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId}");
+
+        return Ok(new TransactionDto
+        {
+            Id = transaction.Id,
+            CategoryId = transaction.CategoryId,
+            CategoryName = transaction.Category?.Name,
+            CategoryColor = transaction.Category?.Color,
+            Amount = transaction.Amount,
+            Currency = transaction.Currency,
+            Description = transaction.Description,
+            ReceiptImageUrl = transaction.ReceiptImageUrl,
+            TransactionDate = transaction.TransactionDate,
+            CreatedAt = transaction.CreatedAt
+        });
     }
+    catch (Exception ex)
+    {
+        _logger.LogError($"Update transaction error: {ex.Message}");
+        return StatusCode(500, new { error = "An error occurred while updating transaction" });
+    }
+}
 
     [HttpDelete("{id}")]
     [ProducesResponseType(200)]

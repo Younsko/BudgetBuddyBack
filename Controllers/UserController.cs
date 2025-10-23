@@ -61,79 +61,77 @@ public class UserController : ControllerBase
         });
     }
 
-       /// <summary>
-    /// Update user profile (name, password, photo ONLY)
-    /// Email and Currency are NOT editable here
-    /// </summary>
-    [HttpPut("profile")]
-    [ProducesResponseType(typeof(UserProfileDto), 200)]
-    [ProducesResponseType(400)]
-    [ProducesResponseType(404)]
-    public async Task<ActionResult<UserProfileDto>> UpdateProfile(UserUpdateDto dto)
+ /// <summary>
+/// Update user profile (name, photo ONLY) - Password removed
+/// </summary>
+[HttpPut("profile")]
+[ProducesResponseType(typeof(UserProfileDto), 200)]
+[ProducesResponseType(400)]
+[ProducesResponseType(404)]
+public async Task<ActionResult<UserProfileDto>> UpdateProfile(UserUpdateDto dto)
+{
+    if (!ModelState.IsValid)
+        return BadRequest(ModelState);
+
+    var userId = GetUserId();
+    var user = await _db.Users.FindAsync(userId);
+
+    if (user == null)
+        return NotFound(new { error = "User not found" });
+
+    try
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
+        bool hasChanges = false;
 
-        var userId = GetUserId();
-        var user = await _db.Users.FindAsync(userId);
-
-        if (user == null)
-            return NotFound(new { error = "User not found" });
-
-        try
+        // Update name
+        if (!string.IsNullOrWhiteSpace(dto.Name))
         {
-            // Update name
-            if (!string.IsNullOrWhiteSpace(dto.Name))
+            user.Name = dto.Name.Trim();
+            hasChanges = true;
+            _logger.LogInformation($"User {userId} updated name");
+        }
+
+        // Update profile photo URL
+        if (dto.ProfilePhotoUrl != null)
+        {
+            // Validate URL format if not empty
+            if (!string.IsNullOrEmpty(dto.ProfilePhotoUrl) && 
+                !Uri.TryCreate(dto.ProfilePhotoUrl, UriKind.Absolute, out _))
             {
-                user.Name = dto.Name.Trim();
-                _logger.LogInformation($"User {userId} updated name");
+                return BadRequest(new { error = "Invalid profile photo URL" });
             }
 
-            // Update password (only if provided)
-            if (!string.IsNullOrWhiteSpace(dto.Password))
-            {
-                user.PasswordHash = _authService.HashPassword(dto.Password);
-                _logger.LogInformation($"User {userId} changed password");
-            }
+            user.ProfilePhotoUrl = dto.ProfilePhotoUrl;
+            hasChanges = true;
+            _logger.LogInformation($"User {userId} updated profile photo");
+        }
 
-            // Update profile photo URL
-            if (dto.ProfilePhotoUrl != null)
-            {
-                // Validate URL format if not empty
-                if (!string.IsNullOrEmpty(dto.ProfilePhotoUrl) && 
-                    !Uri.TryCreate(dto.ProfilePhotoUrl, UriKind.Absolute, out _))
-                {
-                    return BadRequest(new { error = "Invalid profile photo URL" });
-                }
-
-                user.ProfilePhotoUrl = dto.ProfilePhotoUrl;
-                _logger.LogInformation($"User {userId} updated profile photo");
-            }
-
+        if (hasChanges)
+        {
             user.UpdatedAt = DateTime.UtcNow;
             await _db.SaveChangesAsync();
-
-            return Ok(new UserProfileDto
-            {
-                Id = user.Id,
-                Name = user.Name,
-                Username = user.Username,
-                Email = user.Email,
-                PreferredCurrency = user.PreferredCurrency,
-                ProfilePhotoUrl = user.ProfilePhotoUrl,
-                CreatedAt = user.CreatedAt,
-                UpdatedAt = user.UpdatedAt,
-                TotalCategories = await _db.Categories.CountAsync(c => c.UserId == userId),
-                TotalTransactions = await _db.Transactions.CountAsync(t => t.UserId == userId)
-            });
         }
-        catch (Exception ex)
+
+        return Ok(new UserProfileDto
         {
-            _logger.LogError($"Profile update error for user {userId}: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while updating profile" });
-        }
+            Id = user.Id,
+            Name = user.Name,
+            Username = user.Username,
+            Email = user.Email,
+            PreferredCurrency = user.PreferredCurrency,
+            ProfilePhotoUrl = user.ProfilePhotoUrl,
+            CreatedAt = user.CreatedAt,
+            UpdatedAt = user.UpdatedAt,
+            TotalCategories = await _db.Categories.CountAsync(c => c.UserId == userId),
+            TotalTransactions = await _db.Transactions.CountAsync(t => t.UserId == userId)
+        });
     }
-
+    catch (Exception ex)
+    {
+        _logger.LogError($"Profile update error for user {userId}: {ex.Message}");
+        return StatusCode(500, new { error = "An error occurred while updating profile" });
+    }
+}
     /// <summary>
     /// Update user settings (currency only)
     /// </summary>
@@ -267,45 +265,50 @@ public class UserController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Delete user account (with password confirmation)
-    /// </summary>
-    [HttpDelete("profile")]
-    [ProducesResponseType(200)]
-    [ProducesResponseType(400)]
-    [ProducesResponseType(404)]
-    public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
+/// <summary>
+/// Delete user account (with password confirmation)
+/// </summary>
+[HttpDelete("profile")]
+[ProducesResponseType(200)]
+[ProducesResponseType(400)]
+[ProducesResponseType(404)]
+public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
+{
+    if (dto == null)
     {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var userId = GetUserId();
-        var user = await _db.Users.FindAsync(userId);
-
-        if (user == null)
-            return NotFound(new { error = "User not found" });
-
-        // Verify password
-        if (!_authService.VerifyPassword(dto.Password, user.PasswordHash))
-            return BadRequest(new { error = "Invalid password" });
-
-        // Verify confirmation phrase
-        if (dto.Confirmation != "DELETE_ZONE1")
-            return BadRequest(new { error = "Invalid confirmation phrase" });
-
-        try
-        {
-            _db.Users.Remove(user);
-            await _db.SaveChangesAsync();
-
-            _logger.LogWarning($"User account deleted: {user.Username} (ID: {userId})");
-
-            return Ok(new { message = "Account deleted successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Account deletion error for user {userId}: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while deleting account" });
-        }
+        return BadRequest(new { error = "Invalid request body" });
     }
+
+    if (!ModelState.IsValid)
+        return BadRequest(ModelState);
+
+    var userId = GetUserId();
+    var user = await _db.Users.FindAsync(userId);
+
+    if (user == null)
+        return NotFound(new { error = "User not found" });
+
+    // Verify password
+    if (!_authService.VerifyPassword(dto.Password, user.PasswordHash))
+        return BadRequest(new { error = "Invalid password" });
+
+    // Verify confirmation phrase
+    if (dto.Confirmation != "DELETE_ZONE1")
+        return BadRequest(new { error = "Invalid confirmation phrase" });
+
+    try
+    {
+        _db.Users.Remove(user);
+        await _db.SaveChangesAsync();
+
+        _logger.LogWarning($"User account deleted: {user.Username} (ID: {userId})");
+
+        return Ok(new { message = "Account deleted successfully" });
+    }
+    catch (Exception ex)
+    {
+        _logger.LogError($"Account deletion error for user {userId}: {ex.Message}");
+        return StatusCode(500, new { error = "An error occurred while deleting account" });
+    }
+}
 }

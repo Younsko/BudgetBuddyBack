@@ -46,14 +46,7 @@ public class UserUpdateDto
 {
     [StringLength(100, MinimumLength = 2)]
     public string? Name { get; set; }
-
-    [StringLength(100, MinimumLength = 6)]
-    public string? Password { get; set; }
-
     public string? ProfilePhotoUrl { get; set; }
-    
-    // NO Currency here - use UserSettingsDto instead
-    // NO Email here - email cannot be changed
 }
 
 public class CategoryDto
@@ -111,11 +104,10 @@ public class TransactionCreateDto
     [StringLength(500)]
     public string Description { get; set; } = string.Empty;
 
-    public DateTime? Date { get; set; }
+    public DateTime? Date { get; set; } 
 
     public string? ReceiptImage { get; set; }
 }
-
 public class OcrResponseDto
 {
     public decimal? Amount { get; set; }

@@ -16,18 +16,21 @@ public class CategoryService
     /// <summary>
     /// Catégories par défaut créées à l'inscription
     /// </summary>
-    private static readonly List<(string Name, string Color, decimal Budget)> DefaultCategories = new()
-    {
-        ("Food", "#FF6B6B", 300m),
-        ("Transport", "#4ECDC4", 150m),
-        ("Healthcare", "#45B7D1", 100m),
-        ("Entertainment", "#FFA07A", 100m),
-        ("Education", "#98D8C8", 200m),
-        ("Housing", "#6C5CE7", 500m),
-        ("Utilities", "#FDCB6E", 150m),
-        ("Shopping", "#E17055", 200m),
-        ("Miscellaneous", "#A29BFE", 100m)
-    };
+   private static readonly List<(string Name, string Color)> DefaultCategories = new()
+{
+    ("Food & Dining", "#FF6B6B"),
+    ("Transportation", "#4ECDC4"),
+    ("Shopping", "#45B7D1"),
+    ("Entertainment", "#FFA07A"),
+    ("Healthcare", "#98D8C8"),
+    ("Housing", "#6C5CE7"),
+    ("Utilities", "#FDCB6E"),
+    ("Education", "#E17055"),
+    ("Travel", "#A29BFE"),
+    ("Personal Care", "#00B894"),
+    ("Gifts & Donations", "#E84393"),
+    ("Miscellaneous", "#636E72")
+};
 
     /// <summary>
     /// Initialize default categories for new user
