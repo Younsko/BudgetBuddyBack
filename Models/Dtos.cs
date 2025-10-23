@@ -196,3 +196,9 @@ public class DeleteAccountDto
     [RegularExpression("^DELETE_ZONE1$", ErrorMessage = "Must type DELETE_ZONE1 exactly")]
     public string Confirmation { get; set; } = string.Empty;
 }
+
+public class UserSettingsDto
+{
+    [RegularExpression(@"^[A-Z]{3}$", ErrorMessage = "Currency must be 3-letter code (e.g. USD, EUR)")]
+    public string? PreferredCurrency { get; set; }
+}

@@ -62,7 +62,8 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
-    /// Update user profile (name, email, password, currency, photo)
+    /// Update user profile (name, password, photo)
+    /// Email is NOT editable
     /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(UserProfileDto), 200)]
@@ -88,16 +89,6 @@ public class UserController : ControllerBase
                 _logger.LogInformation($"User {userId} updated name");
             }
 
-            // Update email (check uniqueness)
-            if (!string.IsNullOrWhiteSpace(dto.Email) && dto.Email != user.Email)
-            {
-                if (await _db.Users.AnyAsync(u => u.Email == dto.Email && u.Id != userId))
-                    return BadRequest(new { error = "Email already in use" });
-
-                user.Email = dto.Email.Trim();
-                _logger.LogInformation($"User {userId} updated email");
-            }
-
             // Update password
             if (!string.IsNullOrWhiteSpace(dto.Password))
             {
@@ -105,17 +96,10 @@ public class UserController : ControllerBase
                 _logger.LogInformation($"User {userId} changed password");
             }
 
-            // Update preferred currency
-            if (!string.IsNullOrWhiteSpace(dto.PreferredCurrency))
-            {
-                user.PreferredCurrency = dto.PreferredCurrency.ToUpper();
-                _logger.LogInformation($"User {userId} updated currency to {user.PreferredCurrency}");
-            }
-
             // Update profile photo URL
             if (dto.ProfilePhotoUrl != null)
             {
-                // Validate URL format
+                // Validate URL format if not empty
                 if (!string.IsNullOrEmpty(dto.ProfilePhotoUrl) && 
                     !Uri.TryCreate(dto.ProfilePhotoUrl, UriKind.Absolute, out _))
                 {
@@ -147,6 +131,43 @@ public class UserController : ControllerBase
         {
             _logger.LogError($"Profile update error for user {userId}: {ex.Message}");
             return StatusCode(500, new { error = "An error occurred while updating profile" });
+        }
+    }
+
+    /// <summary>
+    /// Update user settings (currency only)
+    /// </summary>
+    [HttpPut("settings")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult> UpdateSettings([FromBody] UserSettingsDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var userId = GetUserId();
+        var user = await _db.Users.FindAsync(userId);
+
+        if (user == null)
+            return NotFound(new { error = "User not found" });
+
+        try
+        {
+            if (!string.IsNullOrWhiteSpace(dto.PreferredCurrency))
+            {
+                user.PreferredCurrency = dto.PreferredCurrency.ToUpper();
+                _logger.LogInformation($"User {userId} updated currency to {user.PreferredCurrency}");
+            }
+
+            user.UpdatedAt = DateTime.UtcNow;
+            await _db.SaveChangesAsync();
+
+            return Ok(new { message = "Settings updated successfully", currency = user.PreferredCurrency });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Settings update error for user {userId}: {ex.Message}");
+            return StatusCode(500, new { error = "An error occurred while updating settings" });
         }
     }
 
@@ -247,22 +268,30 @@ public class UserController : ControllerBase
     }
 
     /// <summary>
-    /// Delete user account (with all associated data)
+    /// Delete user account (with password confirmation)
     /// </summary>
     [HttpDelete("profile")]
     [ProducesResponseType(200)]
+    [ProducesResponseType(400)]
     [ProducesResponseType(404)]
-    public async Task<IActionResult> DeleteAccount([FromBody] string password)
+    public async Task<IActionResult> DeleteAccount([FromBody] DeleteAccountDto dto)
     {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
         var userId = GetUserId();
         var user = await _db.Users.FindAsync(userId);
 
         if (user == null)
             return NotFound(new { error = "User not found" });
 
-        // Verify password before deletion
-        if (!_authService.VerifyPassword(password, user.PasswordHash))
-            return Unauthorized(new { error = "Invalid password" });
+        // Verify password
+        if (!_authService.VerifyPassword(dto.Password, user.PasswordHash))
+            return BadRequest(new { error = "Invalid password" });
+
+        // Verify confirmation phrase
+        if (dto.Confirmation != "DELETE_ZONE1")
+            return BadRequest(new { error = "Invalid confirmation phrase" });
 
         try
         {
