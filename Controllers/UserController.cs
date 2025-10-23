@@ -61,9 +61,9 @@ public class UserController : ControllerBase
         });
     }
 
-    /// <summary>
-    /// Update user profile (name, password, photo)
-    /// Email is NOT editable
+       /// <summary>
+    /// Update user profile (name, password, photo ONLY)
+    /// Email and Currency are NOT editable here
     /// </summary>
     [HttpPut("profile")]
     [ProducesResponseType(typeof(UserProfileDto), 200)]
@@ -89,7 +89,7 @@ public class UserController : ControllerBase
                 _logger.LogInformation($"User {userId} updated name");
             }
 
-            // Update password
+            // Update password (only if provided)
             if (!string.IsNullOrWhiteSpace(dto.Password))
             {
                 user.PasswordHash = _authService.HashPassword(dto.Password);

@@ -50,10 +50,10 @@ public class UserUpdateDto
     [StringLength(100, MinimumLength = 6)]
     public string? Password { get; set; }
 
-    [RegularExpression(@"^[A-Z]{3}$", ErrorMessage = "Currency must be 3-letter code (e.g. USD, EUR)")]
-    public string? PreferredCurrency { get; set; }
-
     public string? ProfilePhotoUrl { get; set; }
+    
+    // NO Currency here - use UserSettingsDto instead
+    // NO Email here - email cannot be changed
 }
 
 public class CategoryDto
