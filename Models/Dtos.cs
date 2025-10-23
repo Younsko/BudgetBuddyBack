@@ -17,9 +17,7 @@ public class RegisterDto
     public string Email { get; set; } = string.Empty;
 
     [Required(ErrorMessage = "Password is required")]
-    [StringLength(100, MinimumLength = 8, ErrorMessage = "Password must be at least 8 characters")]
-    [RegularExpression(@"^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$",
-    ErrorMessage = "Password must contain uppercase, lowercase, number and special character")]
+    [StringLength(100, MinimumLength = 6)]
     public string Password { get; set; } = string.Empty;
 }
 
@@ -41,6 +39,7 @@ public class AuthResponseDto
     public string? ProfilePhotoUrl { get; set; }
     public string Token { get; set; } = string.Empty;
     public DateTime ExpiresAt { get; set; }
+    public string PreferredCurrency { get; set; } = "EUR";
 }
 
 public class UserUpdateDto
@@ -48,10 +47,7 @@ public class UserUpdateDto
     [StringLength(100, MinimumLength = 2)]
     public string? Name { get; set; }
 
-    [EmailAddress]
-    public string? Email { get; set; }
-
-    [StringLength(100, MinimumLength = 8)]
+    [StringLength(100, MinimumLength = 6)]
     public string? Password { get; set; }
 
     [RegularExpression(@"^[A-Z]{3}$", ErrorMessage = "Currency must be 3-letter code (e.g. USD, EUR)")]
@@ -101,7 +97,6 @@ public class TransactionDto
 
 public class TransactionCreateDto
 {
-    [Range(1, int.MaxValue, ErrorMessage = "CategoryId must be valid")]
     public int? CategoryId { get; set; }
 
     [Required]
@@ -110,11 +105,13 @@ public class TransactionCreateDto
 
     [Required]
     [RegularExpression(@"^[A-Z]{3}$")]
-    public string Currency { get; set; } = "USD";
+    public string Currency { get; set; } = "EUR";
 
     [Required]
     [StringLength(500)]
     public string Description { get; set; } = string.Empty;
+
+    public DateTime? Date { get; set; }
 
     public string? ReceiptImage { get; set; }
 }
@@ -178,4 +175,24 @@ public class UserProfileDto
     public DateTime UpdatedAt { get; set; }
     public int TotalCategories { get; set; }
     public int TotalTransactions { get; set; }
+}
+
+public class PasswordChangeDto
+{
+    [Required]
+    public string CurrentPassword { get; set; } = string.Empty;
+
+    [Required]
+    [StringLength(100, MinimumLength = 6)]
+    public string NewPassword { get; set; } = string.Empty;
+}
+
+public class DeleteAccountDto
+{
+    [Required]
+    public string Password { get; set; } = string.Empty;
+
+    [Required]
+    [RegularExpression("^DELETE_ZONE1$", ErrorMessage = "Must type DELETE_ZONE1 exactly")]
+    public string Confirmation { get; set; } = string.Empty;
 }

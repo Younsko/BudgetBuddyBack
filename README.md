@@ -47,8 +47,7 @@ Base URL: `/api/`
 }
 Response (200):
 
-json
-Copier le code
+
 {
   "id": 0,
   "username": "string",
@@ -65,16 +64,14 @@ POST /auth/login
 
 Request Body (JSON):
 
-json
-Copier le code
+
 {
   "username": "string",
   "password": "string"
 }
 Response (200):
 
-json
-Copier le code
+
 {
   "id": 0,
   "username": "string",
@@ -93,8 +90,7 @@ Request Body: "string" (token)
 
 Response (200):
 
-json
-Copier le code
+
 {
   "valid": true
 }
@@ -110,8 +106,7 @@ month (optional, int)
 
 Response (200):
 
-json
-Copier le code
+
 [
   {
     "id": 0,
@@ -128,8 +123,7 @@ POST /categories
 
 Request Body (JSON):
 
-json
-Copier le code
+
 {
   "name": "string",
   "color": "#RRGGBB",
@@ -137,8 +131,7 @@ Copier le code
 }
 Response (201):
 
-json
-Copier le code
+
 {
   "id": 0,
   "name": "string",
@@ -155,8 +148,7 @@ GET /categories/{id}
 
 Response (200):
 
-json
-Copier le code
+
 {
   "id": 0,
   "name": "string",
@@ -173,8 +165,7 @@ PUT /categories/{id}
 
 Request Body (JSON):
 
-json
-Copier le code
+
 {
   "name": "string",
   "color": "#RRGGBB",
@@ -202,8 +193,7 @@ pageSize (optional, default 20)
 
 Response (200):
 
-json
-Copier le code
+
 [
   {
     "id": 0,
@@ -223,8 +213,7 @@ POST /transactions
 
 Request Body (JSON):
 
-json
-Copier le code
+
 {
   "categoryId": 0,
   "amount": 100,
@@ -269,8 +258,7 @@ GET /user/profile
 
 Response (200):
 
-json
-Copier le code
+
 {
   "id": 0,
   "name": "string",
@@ -290,8 +278,7 @@ PUT /user/profile
 
 Request Body (JSON):
 
-json
-Copier le code
+
 {
   "name": "string",
   "email": "user@example.com",
@@ -321,8 +308,6 @@ month (optional, default 0)
 
 Response (200):
 
-json
-Copier le code
 {
   "totalSpentThisMonth": 0,
   "totalBudgetThisMonth": 0,

@@ -30,9 +30,6 @@ public class TransactionsController : ControllerBase
 
     private int GetUserId() => int.Parse(User.FindFirst("id")?.Value ?? "0");
 
-    /// <summary>
-    /// Get all transactions for current month (paginated)
-    /// </summary>
     [HttpGet]
     [ProducesResponseType(typeof(List<TransactionDto>), 200)]
     public async Task<ActionResult<object>> GetTransactions(
@@ -93,9 +90,208 @@ public class TransactionsController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Get transactions for specific month
-    /// </summary>
+    [HttpGet("{id}")]
+    [ProducesResponseType(typeof(TransactionDto), 200)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<TransactionDto>> GetTransaction(int id)
+    {
+        var userId = GetUserId();
+
+        var transaction = await _db.Transactions
+            .Include(t => t.Category)
+            .FirstOrDefaultAsync(t => t.Id == id);
+
+        if (transaction == null)
+            return NotFound(new { error = "Transaction not found" });
+
+        if (transaction.UserId != userId)
+            return Forbid();
+
+        return Ok(new TransactionDto
+        {
+            Id = transaction.Id,
+            CategoryId = transaction.CategoryId,
+            CategoryName = transaction.Category?.Name,
+            CategoryColor = transaction.Category?.Color,
+            Amount = transaction.Amount,
+            Currency = transaction.Currency,
+            Description = transaction.Description,
+            ReceiptImageUrl = transaction.ReceiptImageUrl,
+            TransactionDate = transaction.TransactionDate,
+            CreatedAt = transaction.CreatedAt
+        });
+    }
+
+    [HttpPost]
+    [ProducesResponseType(typeof(TransactionDto), 201)]
+    [ProducesResponseType(400)]
+    public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCreateDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var userId = GetUserId();
+
+        try
+        {
+            // ✅ Vérifier ownership de la catégorie
+            if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
+            {
+                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
+                    return BadRequest(new { error = "Category not found or access denied" });
+            }
+
+            var transaction = new Transaction
+            {
+                UserId = userId,
+                CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null,
+                Amount = dto.Amount,
+                Currency = dto.Currency.ToUpper(),
+                Description = dto.Description,
+                // ✅ Utiliser la date fournie ou date actuelle
+                TransactionDate = dto.Date ?? DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            if (!string.IsNullOrEmpty(dto.ReceiptImage))
+            {
+                try
+                {
+                    var ocrResult = await _ocrService.ExtractFromReceiptAsync(dto.ReceiptImage);
+                    
+                    if (ocrResult.Amount.HasValue && transaction.Amount == 0)
+                        transaction.Amount = ocrResult.Amount.Value;
+                    
+                    if (!string.IsNullOrEmpty(ocrResult.Description) && string.IsNullOrEmpty(transaction.Description))
+                        transaction.Description = ocrResult.Description;
+
+                    transaction.ReceiptImageUrl = $"data:image/jpeg;base64,{dto.ReceiptImage.Substring(0, Math.Min(100, dto.ReceiptImage.Length))}...";
+                    
+                    _logger.LogInformation($"OCR processed for transaction by user {userId}");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning($"OCR failed: {ex.Message}");
+                }
+            }
+
+            _db.Transactions.Add(transaction);
+            await _db.SaveChangesAsync();
+
+            await _db.Entry(transaction).Reference(t => t.Category).LoadAsync();
+
+            _logger.LogInformation($"Transaction created (ID: {transaction.Id}) by user {userId}");
+
+            return CreatedAtAction(nameof(GetTransaction), new { id = transaction.Id }, new TransactionDto
+            {
+                Id = transaction.Id,
+                CategoryId = transaction.CategoryId,
+                CategoryName = transaction.Category?.Name,
+                CategoryColor = transaction.Category?.Color,
+                Amount = transaction.Amount,
+                Currency = transaction.Currency,
+                Description = transaction.Description,
+                ReceiptImageUrl = transaction.ReceiptImageUrl,
+                TransactionDate = transaction.TransactionDate,
+                CreatedAt = transaction.CreatedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Create transaction error: {ex.Message}");
+            return StatusCode(500, new { error = "An error occurred while creating transaction" });
+        }
+    }
+
+    [HttpPut("{id}")]
+    [ProducesResponseType(typeof(TransactionDto), 200)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, TransactionCreateDto dto)
+    {
+        if (!ModelState.IsValid)
+            return BadRequest(ModelState);
+
+        var userId = GetUserId();
+
+        var transaction = await _db.Transactions
+            .Include(t => t.Category)
+            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+
+        if (transaction == null)
+            return NotFound(new { error = "Transaction not found or access denied" });
+
+        try
+        {
+            if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
+            {
+                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
+                    return BadRequest(new { error = "Category not found or access denied" });
+            }
+
+            transaction.CategoryId = dto.CategoryId.HasValue && dto.CategoryId.Value > 0 ? dto.CategoryId.Value : null;
+            transaction.Amount = dto.Amount;
+            transaction.Currency = dto.Currency.ToUpper();
+            transaction.Description = dto.Description;
+            if (dto.Date.HasValue)
+                transaction.TransactionDate = dto.Date.Value;
+
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId}");
+
+            return Ok(new TransactionDto
+            {
+                Id = transaction.Id,
+                CategoryId = transaction.CategoryId,
+                CategoryName = transaction.Category?.Name,
+                CategoryColor = transaction.Category?.Color,
+                Amount = transaction.Amount,
+                Currency = transaction.Currency,
+                Description = transaction.Description,
+                ReceiptImageUrl = transaction.ReceiptImageUrl,
+                TransactionDate = transaction.TransactionDate,
+                CreatedAt = transaction.CreatedAt
+            });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Update transaction error: {ex.Message}");
+            return StatusCode(500, new { error = "An error occurred while updating transaction" });
+        }
+    }
+
+    [HttpDelete("{id}")]
+    [ProducesResponseType(200)]
+    [ProducesResponseType(403)]
+    [ProducesResponseType(404)]
+    public async Task<IActionResult> DeleteTransaction(int id)
+    {
+        var userId = GetUserId();
+
+        var transaction = await _db.Transactions
+            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
+
+        if (transaction == null)
+            return NotFound(new { error = "Transaction not found or access denied" });
+
+        try
+        {
+            _db.Transactions.Remove(transaction);
+            await _db.SaveChangesAsync();
+
+            _logger.LogInformation($"Transaction deleted (ID: {id}) by user {userId}");
+
+            return Ok(new { message = "Transaction deleted successfully" });
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError($"Delete transaction error: {ex.Message}");
+            return StatusCode(500, new { error = "An error occurred while deleting transaction" });
+        }
+    }
+
     [HttpGet("month/{year}/{month}")]
     [ProducesResponseType(typeof(List<TransactionDto>), 200)]
     public async Task<ActionResult<object>> GetTransactionsByMonth(
@@ -159,228 +355,6 @@ public class TransactionsController : ControllerBase
         }
     }
 
-    /// <summary>
-    /// Get a single transaction by ID
-    /// </summary>
-    [HttpGet("{id}")]
-    [ProducesResponseType(typeof(TransactionDto), 200)]
-    [ProducesResponseType(403)]
-    [ProducesResponseType(404)]
-    public async Task<ActionResult<TransactionDto>> GetTransaction(int id)
-    {
-        var userId = GetUserId();
-
-        var transaction = await _db.Transactions
-            .Include(t => t.Category)
-            .FirstOrDefaultAsync(t => t.Id == id);
-
-        if (transaction == null)
-            return NotFound(new { error = "Transaction not found" });
-
-        // ✅ Security: Verify ownership
-        if (transaction.UserId != userId)
-            return Forbid();
-
-        return Ok(new TransactionDto
-        {
-            Id = transaction.Id,
-            CategoryId = transaction.CategoryId,
-            CategoryName = transaction.Category?.Name,
-            CategoryColor = transaction.Category?.Color,
-            Amount = transaction.Amount,
-            Currency = transaction.Currency,
-            Description = transaction.Description,
-            ReceiptImageUrl = transaction.ReceiptImageUrl,
-            TransactionDate = transaction.TransactionDate,
-            CreatedAt = transaction.CreatedAt
-        });
-    }
-
-    /// <summary>
-    /// Create a new transaction (with optional OCR for receipt)
-    /// </summary>
-    [HttpPost]
-    [ProducesResponseType(typeof(TransactionDto), 201)]
-    [ProducesResponseType(400)]
-    public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCreateDto dto)
-    {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var userId = GetUserId();
-
-        try
-        {
-            // ✅ Security: Verify category ownership if provided
-            if (dto.CategoryId.HasValue)
-            {
-                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
-                    return BadRequest(new { error = "Category not found or access denied" });
-            }
-
-            var transaction = new Transaction
-            {
-                UserId = userId,
-                CategoryId = dto.CategoryId,
-                Amount = dto.Amount,
-                Currency = dto.Currency.ToUpper(),
-                Description = dto.Description,
-                TransactionDate = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow
-            };
-
-            // Process OCR if receipt image provided
-            if (!string.IsNullOrEmpty(dto.ReceiptImage))
-            {
-                try
-                {
-                    var ocrResult = await _ocrService.ExtractFromReceiptAsync(dto.ReceiptImage);
-                    
-                    if (ocrResult.Amount.HasValue && transaction.Amount == 0)
-                        transaction.Amount = ocrResult.Amount.Value;
-                    
-                    if (!string.IsNullOrEmpty(ocrResult.Description) && string.IsNullOrEmpty(transaction.Description))
-                        transaction.Description = ocrResult.Description;
-
-                    // In production: upload to cloud storage (S3, Azure Blob, etc.)
-                    transaction.ReceiptImageUrl = $"data:image/jpeg;base64,{dto.ReceiptImage.Substring(0, Math.Min(100, dto.ReceiptImage.Length))}...";
-                    
-                    _logger.LogInformation($"OCR processed for transaction by user {userId}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"OCR failed: {ex.Message}");
-                    // Continue without OCR
-                }
-            }
-
-            _db.Transactions.Add(transaction);
-            await _db.SaveChangesAsync();
-
-            // Reload with category
-            await _db.Entry(transaction).Reference(t => t.Category).LoadAsync();
-
-            _logger.LogInformation($"Transaction created (ID: {transaction.Id}) by user {userId}");
-
-            return CreatedAtAction(nameof(GetTransaction), new { id = transaction.Id }, new TransactionDto
-            {
-                Id = transaction.Id,
-                CategoryId = transaction.CategoryId,
-                CategoryName = transaction.Category?.Name,
-                CategoryColor = transaction.Category?.Color,
-                Amount = transaction.Amount,
-                Currency = transaction.Currency,
-                Description = transaction.Description,
-                ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
-                CreatedAt = transaction.CreatedAt
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Create transaction error: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while creating transaction" });
-        }
-    }
-
-    /// <summary>
-    /// Update a transaction
-    /// </summary>
-    [HttpPut("{id}")]
-    [ProducesResponseType(typeof(TransactionDto), 200)]
-    [ProducesResponseType(403)]
-    [ProducesResponseType(404)]
-    public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, TransactionCreateDto dto)
-    {
-        if (!ModelState.IsValid)
-            return BadRequest(ModelState);
-
-        var userId = GetUserId();
-
-        // ✅ Security: Verify transaction ownership
-        var transaction = await _db.Transactions
-            .Include(t => t.Category)
-            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
-
-        if (transaction == null)
-            return NotFound(new { error = "Transaction not found or access denied" });
-
-        try
-        {
-            // ✅ Security: Verify category ownership if provided
-            if (dto.CategoryId.HasValue)
-            {
-                if (!await _categoryService.UserOwnsCategoryAsync(userId, dto.CategoryId.Value))
-                    return BadRequest(new { error = "Category not found or access denied" });
-            }
-
-            transaction.CategoryId = dto.CategoryId;
-            transaction.Amount = dto.Amount;
-            transaction.Currency = dto.Currency.ToUpper();
-            transaction.Description = dto.Description;
-
-            await _db.SaveChangesAsync();
-
-            _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId}");
-
-            return Ok(new TransactionDto
-            {
-                Id = transaction.Id,
-                CategoryId = transaction.CategoryId,
-                CategoryName = transaction.Category?.Name,
-                CategoryColor = transaction.Category?.Color,
-                Amount = transaction.Amount,
-                Currency = transaction.Currency,
-                Description = transaction.Description,
-                ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
-                CreatedAt = transaction.CreatedAt
-            });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Update transaction error: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while updating transaction" });
-        }
-    }
-
-    /// <summary>
-    /// Delete a transaction
-    /// </summary>
-    [HttpDelete("{id}")]
-    [ProducesResponseType(200)]
-    [ProducesResponseType(403)]
-    [ProducesResponseType(404)]
-    public async Task<IActionResult> DeleteTransaction(int id)
-    {
-        var userId = GetUserId();
-
-        // ✅ Security: Verify transaction ownership
-        var transaction = await _db.Transactions
-            .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
-
-        if (transaction == null)
-            return NotFound(new { error = "Transaction not found or access denied" });
-
-        try
-        {
-            _db.Transactions.Remove(transaction);
-            await _db.SaveChangesAsync();
-
-            _logger.LogInformation($"Transaction deleted (ID: {id}) by user {userId}");
-
-            return Ok(new { message = "Transaction deleted successfully" });
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Delete transaction error: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while deleting transaction" });
-        }
-    }
-
-    /// <summary>
-    /// Extract data from receipt using OCR (preview before creating transaction)
-    /// </summary>
     [HttpPost("ocr-preview")]
     [ProducesResponseType(typeof(OcrResponseDto), 200)]
     [ProducesResponseType(400)]
