@@ -14,7 +14,7 @@ public class CategoryService
     }
 
     /// <summary>
-    /// Catégories par défaut créées à l'inscription
+    /// Categories created by default with no budget
     /// </summary>
     private static readonly List<(string Name, string Color)> DefaultCategories = new()
     {
@@ -44,7 +44,7 @@ public class CategoryService
             UserId = userId,
             Name = dc.Name,
             Color = dc.Color,
-            MonthlyBudget = 0, // ← BUDGET À 0 comme vous le souhaitez
+            MonthlyBudget = 0,
             CreatedAt = DateTime.UtcNow
         }).ToList();
 
