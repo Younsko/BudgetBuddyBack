@@ -130,9 +130,8 @@ public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCre
 {
     if (!ModelState.IsValid)
         return BadRequest(ModelState);
-
+    
     var userId = GetUserId();
-
     try
     {
         if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
@@ -148,59 +147,59 @@ public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCre
             Amount = dto.Amount,
             Currency = dto.Currency.ToUpper(),
             Description = dto.Description,
-            TransactionDate = dto.Date.HasValue ? dto.Date.Value : DateTime.UtcNow,
+            TransactionDate = dto.Date?.ToUniversalTime() ?? DateTime.UtcNow,
             CreatedAt = DateTime.UtcNow
         };
 
-            if (!string.IsNullOrEmpty(dto.ReceiptImage))
-            {
-                try
-                {
-                    var ocrResult = await _ocrService.ExtractFromReceiptAsync(dto.ReceiptImage);
-                    
-                    if (ocrResult.Amount.HasValue && transaction.Amount == 0)
-                        transaction.Amount = ocrResult.Amount.Value;
-                    
-                    if (!string.IsNullOrEmpty(ocrResult.Description) && string.IsNullOrEmpty(transaction.Description))
-                        transaction.Description = ocrResult.Description;
-
-                    transaction.ReceiptImageUrl = $"data:image/jpeg;base64,{dto.ReceiptImage.Substring(0, Math.Min(100, dto.ReceiptImage.Length))}...";
-                    
-                    _logger.LogInformation($"OCR processed for transaction by user {userId}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"OCR failed: {ex.Message}");
-                }
-            }
-
-            _db.Transactions.Add(transaction);
-            await _db.SaveChangesAsync();
-
-            await _db.Entry(transaction).Reference(t => t.Category).LoadAsync();
-
-            _logger.LogInformation($"Transaction created (ID: {transaction.Id}) by user {userId}");
-
-            return CreatedAtAction(nameof(GetTransaction), new { id = transaction.Id }, new TransactionDto
-            {
-                Id = transaction.Id,
-                CategoryId = transaction.CategoryId,
-                CategoryName = transaction.Category?.Name,
-                CategoryColor = transaction.Category?.Color,
-                Amount = transaction.Amount,
-                Currency = transaction.Currency,
-                Description = transaction.Description,
-                ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
-                CreatedAt = transaction.CreatedAt
-            });
-        }
-        catch (Exception ex)
+        if (!string.IsNullOrEmpty(dto.ReceiptImage))
         {
-            _logger.LogError($"Create transaction error: {ex.Message}");
-            return StatusCode(500, new { error = "An error occurred while creating transaction" });
+            try
+            {
+                var ocrResult = await _ocrService.ExtractFromReceiptAsync(dto.ReceiptImage);
+                
+                if (ocrResult.Amount.HasValue && transaction.Amount == 0)
+                    transaction.Amount = ocrResult.Amount.Value;
+                
+                if (!string.IsNullOrEmpty(ocrResult.Description) && string.IsNullOrEmpty(transaction.Description))
+                    transaction.Description = ocrResult.Description;
+
+                transaction.ReceiptImageUrl = $"data:image/jpeg;base64,{dto.ReceiptImage.Substring(0, Math.Min(100, dto.ReceiptImage.Length))}...";
+                
+                _logger.LogInformation($"OCR processed for transaction by user {userId}");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning($"OCR failed: {ex.Message}");
+            }
         }
+
+        _db.Transactions.Add(transaction);
+        await _db.SaveChangesAsync();
+
+        await _db.Entry(transaction).Reference(t => t.Category).LoadAsync();
+
+        _logger.LogInformation($"Transaction created (ID: {transaction.Id}) by user {userId}");
+
+        return CreatedAtAction(nameof(GetTransaction), new { id = transaction.Id }, new TransactionDto
+        {
+            Id = transaction.Id,
+            CategoryId = transaction.CategoryId,
+            CategoryName = transaction.Category?.Name,
+            CategoryColor = transaction.Category?.Color,
+            Amount = transaction.Amount,
+            Currency = transaction.Currency,
+            Description = transaction.Description,
+            ReceiptImageUrl = transaction.ReceiptImageUrl,
+            TransactionDate = transaction.TransactionDate,
+            CreatedAt = transaction.CreatedAt
+        });
     }
+    catch (Exception ex)
+    {
+        _logger.LogError($"Create transaction error: {ex.Message}");
+        return StatusCode(500, new { error = "An error occurred while creating transaction" });
+    }
+}
 
 [HttpPut("{id}")]
 [ProducesResponseType(typeof(TransactionDto), 200)]
@@ -210,13 +209,12 @@ public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, Transa
 {
     if (!ModelState.IsValid)
         return BadRequest(ModelState);
-
+    
     var userId = GetUserId();
-
     var transaction = await _db.Transactions
         .Include(t => t.Category)
         .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
-
+    
     if (transaction == null)
         return NotFound(new { error = "Transaction not found or access denied" });
 
@@ -232,16 +230,11 @@ public async Task<ActionResult<TransactionDto>> UpdateTransaction(int id, Transa
         transaction.Amount = dto.Amount;
         transaction.Currency = dto.Currency.ToUpper();
         transaction.Description = dto.Description;
-        
-        if (dto.Date.HasValue)
-        {
-            transaction.TransactionDate = dto.Date.Value;
-        }
+        transaction.TransactionDate = dto.Date?.ToUniversalTime() ?? transaction.TransactionDate;
 
         await _db.SaveChangesAsync();
-
         _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId}");
-
+        
         return Ok(new TransactionDto
         {
             Id = transaction.Id,

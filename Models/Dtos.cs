@@ -1,4 +1,5 @@
 using System.ComponentModel.DataAnnotations;
+using System.Text.Json.Serialization;
 namespace BudgetBuddy.Models;
 
 public class RegisterDto
@@ -104,8 +105,8 @@ public class TransactionCreateDto
     [StringLength(500)]
     public string Description { get; set; } = string.Empty;
 
-    public DateTime? Date { get; set; } 
-
+     [JsonPropertyName("date")]
+    public DateTime? Date { get; set; }
     public string? ReceiptImage { get; set; }
 }
 public class OcrResponseDto
