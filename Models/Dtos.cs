@@ -105,10 +105,17 @@ public class TransactionCreateDto
     [StringLength(500)]
     public string Description { get; set; } = string.Empty;
 
-     [JsonPropertyName("date")]
+    // Accept both DateTime and string for flexibility
+    [JsonPropertyName("date")]
     public DateTime? Date { get; set; }
+    
+    // Fallback si la date arrive en string
+    [JsonPropertyName("dateString")]
+    public string? DateString { get; set; }
+    
     public string? ReceiptImage { get; set; }
 }
+
 public class OcrResponseDto
 {
     public decimal? Amount { get; set; }
