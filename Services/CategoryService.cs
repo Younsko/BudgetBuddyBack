@@ -16,21 +16,21 @@ public class CategoryService
     /// <summary>
     /// Catégories par défaut créées à l'inscription
     /// </summary>
-   private static readonly List<(string Name, string Color)> DefaultCategories = new()
-{
-    ("Food & Dining", "#FF6B6B"),
-    ("Transportation", "#4ECDC4"),
-    ("Shopping", "#45B7D1"),
-    ("Entertainment", "#FFA07A"),
-    ("Healthcare", "#98D8C8"),
-    ("Housing", "#6C5CE7"),
-    ("Utilities", "#FDCB6E"),
-    ("Education", "#E17055"),
-    ("Travel", "#A29BFE"),
-    ("Personal Care", "#00B894"),
-    ("Gifts & Donations", "#E84393"),
-    ("Miscellaneous", "#636E72")
-};
+    private static readonly List<(string Name, string Color)> DefaultCategories = new()
+    {
+        ("Food & Dining", "#FF6B6B"),
+        ("Transportation", "#4ECDC4"),
+        ("Shopping", "#45B7D1"),
+        ("Entertainment", "#FFA07A"),
+        ("Healthcare", "#98D8C8"),
+        ("Housing", "#6C5CE7"),
+        ("Utilities", "#FDCB6E"),
+        ("Education", "#E17055"),
+        ("Travel", "#A29BFE"),
+        ("Personal Care", "#00B894"),
+        ("Gifts & Donations", "#E84393"),
+        ("Miscellaneous", "#636E72")
+    };
 
     /// <summary>
     /// Initialize default categories for new user
@@ -44,7 +44,7 @@ public class CategoryService
             UserId = userId,
             Name = dc.Name,
             Color = dc.Color,
-            MonthlyBudget = dc.Budget,
+            MonthlyBudget = 0, // ← BUDGET À 0 comme vous le souhaitez
             CreatedAt = DateTime.UtcNow
         }).ToList();
 

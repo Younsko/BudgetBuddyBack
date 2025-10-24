@@ -85,7 +85,7 @@ public class TransactionDto
     public string Currency { get; set; } = string.Empty;
     public string Description { get; set; } = string.Empty;
     public string? ReceiptImageUrl { get; set; }
-    public DateTime TransactionDate { get; set; }
+    public string TransactionDate { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; }
 }
 
@@ -94,7 +94,7 @@ public class TransactionCreateDto
     public int? CategoryId { get; set; }
 
     [Required]
-    [Range(0.01, 1000000, ErrorMessage = "Amount must be positive")]
+    [Range(0.01, 1000000)]
     public decimal Amount { get; set; }
 
     [Required]
@@ -105,13 +105,8 @@ public class TransactionCreateDto
     [StringLength(500)]
     public string Description { get; set; } = string.Empty;
 
-    // Accept both DateTime and string for flexibility
-    [JsonPropertyName("date")]
-    public DateTime? Date { get; set; }
-    
-    // Fallback si la date arrive en string
-    [JsonPropertyName("dateString")]
-    public string? DateString { get; set; }
+    [Required]
+    public string Date { get; set; } = string.Empty;
     
     public string? ReceiptImage { get; set; }
 }

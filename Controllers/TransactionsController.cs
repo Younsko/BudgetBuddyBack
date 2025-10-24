@@ -40,14 +40,12 @@ public class TransactionsController : ControllerBase
         if (pageSize < 1 || pageSize > 100) pageSize = 20;
 
         var userId = GetUserId();
-        var now = DateTime.UtcNow;
 
         try
         {
+            // SUPPRIMER LE FILTRE DE MOIS/ANNÉE - retourner toutes les transactions
             var query = _db.Transactions
-                .Where(t => t.UserId == userId
-                            && t.TransactionDate.Year == now.Year
-                            && t.TransactionDate.Month == now.Month)
+                .Where(t => t.UserId == userId)
                 .Include(t => t.Category);
 
             var total = await query.CountAsync();
@@ -66,7 +64,7 @@ public class TransactionsController : ControllerBase
                     Currency = t.Currency,
                     Description = t.Description,
                     ReceiptImageUrl = t.ReceiptImageUrl,
-                    TransactionDate = t.TransactionDate,
+                    TransactionDate = t.TransactionDate.ToString("dd-MM-yyyy"),
                     CreatedAt = t.CreatedAt
                 })
                 .ToListAsync();
@@ -118,7 +116,7 @@ public class TransactionsController : ControllerBase
             Currency = transaction.Currency,
             Description = transaction.Description,
             ReceiptImageUrl = transaction.ReceiptImageUrl,
-            TransactionDate = transaction.TransactionDate,
+            TransactionDate = transaction.TransactionDate.ToString("dd-MM-yyyy"),
             CreatedAt = transaction.CreatedAt
         });
     }
@@ -128,10 +126,13 @@ public class TransactionsController : ControllerBase
     [ProducesResponseType(400)]
     public async Task<ActionResult<TransactionDto>> CreateTransaction(TransactionCreateDto dto)
     {
+        _logger.LogInformation($"Received DTO - Date: {dto.Date}, Amount: {dto.Amount}, Description: {dto.Description}");
+        
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-        
+
         var userId = GetUserId();
+
         try
         {
             if (dto.CategoryId.HasValue && dto.CategoryId.Value > 0)
@@ -140,19 +141,20 @@ public class TransactionsController : ControllerBase
                     return BadRequest(new { error = "Category not found or access denied" });
             }
 
-            // Parse la date reçue (qui devrait être en ISO format)
-            DateTime transactionDate = DateTime.UtcNow;
-            if (dto.Date.HasValue)
+            // --- CORRECTION CRITIQUE : OBLIGER LA DATE REÇUE ---
+            if (string.IsNullOrEmpty(dto.Date))
             {
-                transactionDate = dto.Date.Value.ToUniversalTime();
+                return BadRequest(new { error = "Date is required" });
             }
-            else if (!string.IsNullOrEmpty(dto.DateString))
+
+            // Parser la date reçue "22-10-2025"
+            if (!DateTime.TryParseExact(dto.Date, "dd-MM-yyyy", null, System.Globalization.DateTimeStyles.None, out var transactionDate))
             {
-                if (DateTime.TryParse(dto.DateString, out var parsedDate))
-                {
-                    transactionDate = parsedDate.ToUniversalTime();
-                }
+                _logger.LogError($"❌ Failed to parse date: {dto.Date}");
+                return BadRequest(new { error = "Invalid date format. Use DD-MM-YYYY" });
             }
+
+            _logger.LogInformation($"✅ Date successfully parsed: {dto.Date} -> {transactionDate}");
 
             var transaction = new Transaction
             {
@@ -161,38 +163,16 @@ public class TransactionsController : ControllerBase
                 Amount = dto.Amount,
                 Currency = dto.Currency.ToUpper(),
                 Description = dto.Description,
-                TransactionDate = transactionDate,
+                TransactionDate = transactionDate, // ← DATE PARSÉE OBLIGATOIRE
                 CreatedAt = DateTime.UtcNow
             };
-
-            if (!string.IsNullOrEmpty(dto.ReceiptImage))
-            {
-                try
-                {
-                    var ocrResult = await _ocrService.ExtractFromReceiptAsync(dto.ReceiptImage);
-                    
-                    if (ocrResult.Amount.HasValue && transaction.Amount == 0)
-                        transaction.Amount = ocrResult.Amount.Value;
-                    
-                    if (!string.IsNullOrEmpty(ocrResult.Description) && string.IsNullOrEmpty(transaction.Description))
-                        transaction.Description = ocrResult.Description;
-
-                    transaction.ReceiptImageUrl = $"data:image/jpeg;base64,{dto.ReceiptImage.Substring(0, Math.Min(100, dto.ReceiptImage.Length))}...";
-                    
-                    _logger.LogInformation($"OCR processed for transaction by user {userId}");
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogWarning($"OCR failed: {ex.Message}");
-                }
-            }
 
             _db.Transactions.Add(transaction);
             await _db.SaveChangesAsync();
 
             await _db.Entry(transaction).Reference(t => t.Category).LoadAsync();
 
-            _logger.LogInformation($"Transaction created (ID: {transaction.Id}) by user {userId} with date {transaction.TransactionDate}");
+            _logger.LogInformation($"✅ Transaction created with date: {transaction.TransactionDate}");
 
             return CreatedAtAction(nameof(GetTransaction), new { id = transaction.Id }, new TransactionDto
             {
@@ -204,7 +184,7 @@ public class TransactionsController : ControllerBase
                 Currency = transaction.Currency,
                 Description = transaction.Description,
                 ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
+                TransactionDate = transaction.TransactionDate.ToString("dd-MM-yyyy"),
                 CreatedAt = transaction.CreatedAt
             });
         }
@@ -223,12 +203,12 @@ public class TransactionsController : ControllerBase
     {
         if (!ModelState.IsValid)
             return BadRequest(ModelState);
-        
+
         var userId = GetUserId();
         var transaction = await _db.Transactions
             .Include(t => t.Category)
             .FirstOrDefaultAsync(t => t.Id == id && t.UserId == userId);
-        
+
         if (transaction == null)
             return NotFound(new { error = "Transaction not found or access denied" });
 
@@ -245,22 +225,23 @@ public class TransactionsController : ControllerBase
             transaction.Currency = dto.Currency.ToUpper();
             transaction.Description = dto.Description;
 
-            // Update la date si fournie
-            if (dto.Date.HasValue)
+            // --- UPDATE DATE OBLIGATOIRE ---
+            if (string.IsNullOrEmpty(dto.Date))
             {
-                transaction.TransactionDate = dto.Date.Value.ToUniversalTime();
-            }
-            else if (!string.IsNullOrEmpty(dto.DateString))
-            {
-                if (DateTime.TryParse(dto.DateString, out var parsedDate))
-                {
-                    transaction.TransactionDate = parsedDate.ToUniversalTime();
-                }
+                return BadRequest(new { error = "Date is required" });
             }
 
+            if (!DateTime.TryParseExact(dto.Date, "dd-MM-yyyy", null, System.Globalization.DateTimeStyles.None, out var parsedDate))
+            {
+                return BadRequest(new { error = "Invalid date format. Use DD-MM-YYYY" });
+            }
+
+            transaction.TransactionDate = parsedDate;
+
             await _db.SaveChangesAsync();
-            _logger.LogInformation($"Transaction updated (ID: {id}) by user {userId} with date {transaction.TransactionDate}");
-            
+
+            _logger.LogInformation($"✅ Transaction updated with date: {transaction.TransactionDate}");
+
             return Ok(new TransactionDto
             {
                 Id = transaction.Id,
@@ -271,7 +252,7 @@ public class TransactionsController : ControllerBase
                 Currency = transaction.Currency,
                 Description = transaction.Description,
                 ReceiptImageUrl = transaction.ReceiptImageUrl,
-                TransactionDate = transaction.TransactionDate,
+                TransactionDate = transaction.TransactionDate.ToString("dd-MM-yyyy"),
                 CreatedAt = transaction.CreatedAt
             });
         }
@@ -351,7 +332,7 @@ public class TransactionsController : ControllerBase
                     Currency = t.Currency,
                     Description = t.Description,
                     ReceiptImageUrl = t.ReceiptImageUrl,
-                    TransactionDate = t.TransactionDate,
+                    TransactionDate = t.TransactionDate.ToString("dd-MM-yyyy"),
                     CreatedAt = t.CreatedAt
                 })
                 .ToListAsync();
